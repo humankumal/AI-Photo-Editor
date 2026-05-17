@@ -11,12 +11,14 @@ import { FILTER_PRESETS } from '@/constants/filters';
 import { Colors } from '@/constants/colors';
 import { PhotoCanvas, type PhotoCanvasRef } from '@/components/editor/PhotoCanvas';
 import { CropOverlay } from '@/components/editor/CropOverlay';
+import { TransformToolbar } from '@/components/editor/TransformToolbar';
 import type { EditorTool } from '@/types/editor';
 
 const TOOLS: { id: EditorTool; label: string }[] = [
   { id: 'adjust', label: 'Adjust' },
   { id: 'filters', label: 'Filters' },
   { id: 'crop', label: 'Crop' },
+  { id: 'transform', label: 'Transform' },
   { id: 'ai', label: 'AI' },
 ];
 
@@ -36,6 +38,7 @@ export default function EditorScreen() {
   const { run, loading: aiLoading, results: aiResults } = useAIFeatures(decodedId, workingUri);
   const { isCropping, isApplying, startCrop, cancelCrop, applyCrop } = useCrop();
   const [resolvedUri, setResolvedUri] = useState<string | null>(null);
+  const [freeRotateDeg, setFreeRotateDeg] = useState(0);
 
   // Register canvas capture in global store for the export screen
   useEffect(() => {
@@ -94,7 +97,10 @@ export default function EditorScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 className="bg-primary px-3 py-1 rounded-lg"
-                onPress={() => router.push(`/export/${encodeURIComponent(decodedId)}`)}
+                onPress={() => {
+                  setFreeRotateDeg(0); // discard unapplied free rotation
+                  router.push(`/export/${encodeURIComponent(decodedId)}`);
+                }}
               >
                 <Text className="text-white font-semibold text-sm">Export</Text>
               </TouchableOpacity>
@@ -103,9 +109,9 @@ export default function EditorScreen() {
         </View>
       </View>
 
-      {/* Photo Canvas */}
+      {/* Photo Canvas — no overflow:hidden so crop controls can extend below */}
       <View
-        className="items-center justify-center bg-black mx-2 rounded-xl overflow-hidden"
+        className="items-center justify-center bg-black mx-2 rounded-xl"
         style={{ height: canvasSize }}
       >
         <PhotoCanvas
@@ -114,15 +120,18 @@ export default function EditorScreen() {
           adjustments={adjustments}
           width={canvasSize}
           height={canvasSize}
+          freeRotateDeg={freeRotateDeg}
         />
 
         {isCropping && (
-          <CropOverlay
-            canvasWidth={canvasSize}
-            canvasHeight={canvasSize}
-            onApply={(rect) => applyCrop(rect, canvasSize, canvasSize)}
-            onCancel={cancelCrop}
-          />
+          <View style={{ position: 'absolute', top: 0, left: 0, width: canvasSize, height: canvasSize + 100 }}>
+            <CropOverlay
+              canvasWidth={canvasSize}
+              canvasHeight={canvasSize}
+              onApply={(rect) => applyCrop(rect, canvasSize, canvasSize)}
+              onCancel={cancelCrop}
+            />
+          </View>
         )}
 
         {isApplying && (
@@ -215,7 +224,7 @@ export default function EditorScreen() {
           {activeTool === 'crop' && !isCropping && (
             <View className="px-4 py-4 items-center gap-3">
               <Text className="text-textSecondary text-sm text-center">
-                Use the crop tool to trim your photo. Drag corners to resize, drag inside to move.
+                Trim your photo. Drag corners to resize, drag inside to move. Lock aspect ratio with the buttons.
               </Text>
               <TouchableOpacity
                 className="bg-primary rounded-xl px-6 py-3"
@@ -224,6 +233,13 @@ export default function EditorScreen() {
                 <Text className="text-white font-semibold">Start Cropping</Text>
               </TouchableOpacity>
             </View>
+          )}
+
+          {activeTool === 'transform' && (
+            <TransformToolbar
+              freeRotateDeg={freeRotateDeg}
+              onFreeRotateChange={setFreeRotateDeg}
+            />
           )}
 
           {activeTool === 'ai' && (

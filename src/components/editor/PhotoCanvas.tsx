@@ -6,6 +6,7 @@ import {
   useImage,
   ColorMatrix,
   useCanvasRef,
+  Group,
 } from '@shopify/react-native-skia';
 import { cacheDirectory, writeAsStringAsync, EncodingType } from 'expo-file-system/legacy';
 import { buildColorMatrix, isIdentityAdjustment } from '@/utils/colorMatrix';
@@ -20,10 +21,11 @@ type Props = {
   adjustments: AdjustmentParams;
   width: number;
   height: number;
+  freeRotateDeg?: number;
 };
 
 export const PhotoCanvas = forwardRef<PhotoCanvasRef, Props>(
-  ({ uri, adjustments, width, height }, ref) => {
+  ({ uri, adjustments, width, height, freeRotateDeg }, ref) => {
     const canvasRef = useCanvasRef();
     const image = useImage(uri);
 
@@ -78,18 +80,27 @@ export const PhotoCanvas = forwardRef<PhotoCanvasRef, Props>(
       adjustments.saturation
     );
 
+    const rotateDeg = freeRotateDeg ?? 0;
+    const rotateRad = (rotateDeg * Math.PI) / 180;
+    const shouldRotate = Math.abs(rotateDeg) > 0.001;
+    const cx = drawX + drawW / 2;
+    const cy = drawY + drawH / 2;
+
+    const imageNode = (
+      <Image image={image} x={drawX} y={drawY} width={drawW} height={drawH} fit="contain">
+        {!noAdjust && <ColorMatrix matrix={matrix} />}
+      </Image>
+    );
+
     return (
       <Canvas ref={canvasRef} style={{ width, height }}>
-        <Image
-          image={image}
-          x={drawX}
-          y={drawY}
-          width={drawW}
-          height={drawH}
-          fit="contain"
-        >
-          {!noAdjust && <ColorMatrix matrix={matrix} />}
-        </Image>
+        {shouldRotate ? (
+          <Group transform={[{ rotate: rotateRad }]} origin={{ x: cx, y: cy }}>
+            {imageNode}
+          </Group>
+        ) : (
+          imageNode
+        )}
       </Canvas>
     );
   }

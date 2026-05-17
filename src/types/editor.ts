@@ -7,6 +7,6 @@ export type HistoryEntry = {
   timestamp: number;
 };
 
-export type EditorTool = 'adjust' | 'filters' | 'ai' | 'crop';
+export type EditorTool = 'adjust' | 'filters' | 'ai' | 'crop' | 'transform';
 
 export type AIToolType = 'caption' | 'enhance' | 'background' | 'recognize';

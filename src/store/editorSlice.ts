@@ -18,6 +18,7 @@ type EditorActions = {
   setWorkingUri: (uri: string) => void;
   applyAdjustment: (params: Partial<AdjustmentParams>) => void;
   applyFilter: (filterId: string, adjustments: AdjustmentParams) => void;
+  commitTransform: (uri: string) => void;
   undo: () => void;
   redo: () => void;
   resetEditor: () => void;
@@ -70,6 +71,19 @@ export const useEditorStore = create<EditorState & EditorActions>((set, get) => 
     const trimmed = history.slice(0, historyIndex + 1);
     const newHistory = pushHistory(trimmed, entry);
     set({ adjustments: next, history: newHistory, historyIndex: newHistory.length - 1 });
+  },
+
+  commitTransform(uri) {
+    const { adjustments, appliedFilterId, history, historyIndex } = get();
+    const entry: HistoryEntry = {
+      workingUri: uri,
+      adjustments,
+      appliedFilterId,
+      timestamp: Date.now(),
+    };
+    const trimmed = history.slice(0, historyIndex + 1);
+    const newHistory = pushHistory(trimmed, entry);
+    set({ workingUri: uri, history: newHistory, historyIndex: newHistory.length - 1 });
   },
 
   applyFilter(filterId, adjustments) {
