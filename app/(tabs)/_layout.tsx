@@ -1,4 +1,5 @@
 import { Tabs } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
 
 export default function TabsLayout() {
@@ -11,8 +12,24 @@ export default function TabsLayout() {
         tabBarInactiveTintColor: Colors.textMuted,
       }}
     >
-      <Tabs.Screen name="index" options={{ title: 'Photos' }} />
-      <Tabs.Screen name="profile" options={{ title: 'Profile' }} />
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: 'Photos',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="images-outline" color={color} size={size} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: 'Profile',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="person-outline" color={color} size={size} />
+          ),
+        }}
+      />
     </Tabs>
   );
 }

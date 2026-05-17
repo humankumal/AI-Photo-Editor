@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { View, Image, Text, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, useWindowDimensions, Image } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as MediaLibrary from 'expo-media-library';
@@ -8,6 +8,7 @@ import { useUIStore } from '@/store/uiSlice';
 import { useAIFeatures } from '@/hooks/useAIFeatures';
 import { FILTER_PRESETS } from '@/constants/filters';
 import { Colors } from '@/constants/colors';
+import { PhotoCanvas, type PhotoCanvasRef } from '@/components/editor/PhotoCanvas';
 import type { EditorTool } from '@/types/editor';
 
 const TOOLS: { id: EditorTool; label: string }[] = [
@@ -20,11 +21,24 @@ export default function EditorScreen() {
   const { photoId } = useLocalSearchParams<{ photoId: string }>();
   const router = useRouter();
   const decodedId = decodeURIComponent(photoId ?? '');
+  const { width } = useWindowDimensions();
+  const canvasRef = useRef<PhotoCanvasRef>(null);
 
-  const { initEditor, workingUri, adjustments, applyAdjustment, applyFilter, undo, redo, historyIndex, history, originalUri } = useEditorStore();
-  const { activeTool, setActiveTool } = useUIStore();
+  const {
+    initEditor, workingUri, adjustments,
+    applyAdjustment, applyFilter,
+    undo, redo, historyIndex, history,
+  } = useEditorStore();
+  const { activeTool, setActiveTool, setCaptureCanvas } = useUIStore();
   const { run, loading: aiLoading, results: aiResults } = useAIFeatures(decodedId, workingUri);
   const [resolvedUri, setResolvedUri] = useState<string | null>(null);
+
+  // Register the canvas capture function in the global store so export screen can use it
+  useEffect(() => {
+    const captureFn = () => canvasRef.current?.capture() ?? Promise.resolve(null);
+    setCaptureCanvas(captureFn);
+    return () => setCaptureCanvas(null);
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -41,6 +55,11 @@ export default function EditorScreen() {
   }, [decodedId]);
 
   const displayUri = workingUri ?? resolvedUri;
+  const canUndo = historyIndex > 0;
+  const canRedo = historyIndex < history.length - 1;
+
+  // Canvas occupies roughly half the screen height
+  const canvasSize = width - 16;
 
   if (!displayUri) {
     return (
@@ -60,9 +79,12 @@ export default function EditorScreen() {
           <Text className="text-textSecondary text-base">Cancel</Text>
         </TouchableOpacity>
         <Text className="text-textPrimary font-semibold">Edit Photo</Text>
-        <View className="flex-row gap-3">
-          <TouchableOpacity onPress={undo} disabled={historyIndex <= 0}>
-            <Text className={historyIndex <= 0 ? 'text-textMuted' : 'text-primary'}>Undo</Text>
+        <View className="flex-row items-center gap-3">
+          <TouchableOpacity onPress={undo} disabled={!canUndo}>
+            <Text className={!canUndo ? 'text-textMuted text-sm' : 'text-primary text-sm'}>Undo</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={redo} disabled={!canRedo}>
+            <Text className={!canRedo ? 'text-textMuted text-sm' : 'text-primary text-sm'}>Redo</Text>
           </TouchableOpacity>
           <TouchableOpacity
             className="bg-primary px-3 py-1 rounded-lg"
@@ -73,12 +95,17 @@ export default function EditorScreen() {
         </View>
       </View>
 
-      {/* Photo Canvas */}
-      <View className="flex-1 items-center justify-center bg-black mx-2 rounded-xl overflow-hidden">
-        <Image
-          source={{ uri: displayUri }}
-          style={{ width: '100%', height: '100%' }}
-          resizeMode="contain"
+      {/* Skia Photo Canvas */}
+      <View
+        className="items-center justify-center bg-black mx-2 rounded-xl overflow-hidden"
+        style={{ height: canvasSize }}
+      >
+        <PhotoCanvas
+          ref={canvasRef}
+          uri={displayUri}
+          adjustments={adjustments}
+          width={canvasSize}
+          height={canvasSize}
         />
       </View>
 
@@ -106,7 +133,7 @@ export default function EditorScreen() {
                 <Text className="text-textSecondary w-24 capitalize">{key}</Text>
                 <View className="flex-1 flex-row gap-2">
                   <TouchableOpacity
-                    className="bg-surfaceHigh px-3 py-1 rounded-lg"
+                    className="bg-surfaceHigh px-3 py-2 rounded-lg"
                     onPress={() => applyAdjustment({ [key]: Math.max(0.1, adjustments[key] - 0.1) })}
                   >
                     <Text className="text-textPrimary">−</Text>
@@ -115,7 +142,7 @@ export default function EditorScreen() {
                     {adjustments[key].toFixed(1)}
                   </Text>
                   <TouchableOpacity
-                    className="bg-surfaceHigh px-3 py-1 rounded-lg"
+                    className="bg-surfaceHigh px-3 py-2 rounded-lg"
                     onPress={() => applyAdjustment({ [key]: Math.min(2.0, adjustments[key] + 0.1) })}
                   >
                     <Text className="text-textPrimary">+</Text>
@@ -134,8 +161,20 @@ export default function EditorScreen() {
                 className="items-center mr-4"
                 onPress={() => applyFilter(f.id, f.adjustments)}
               >
-                <View className="w-16 h-16 bg-surfaceHigh rounded-xl mb-1 overflow-hidden">
-                  <Image source={{ uri: displayUri }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                <View
+                  className={`w-16 h-16 rounded-xl mb-1 overflow-hidden border-2 ${
+                    adjustments.brightness === f.adjustments.brightness &&
+                    adjustments.saturation === f.adjustments.saturation
+                      ? 'border-primary'
+                      : 'border-transparent'
+                  }`}
+                >
+                  <PhotoCanvas
+                    uri={displayUri}
+                    adjustments={f.adjustments}
+                    width={64}
+                    height={64}
+                  />
                 </View>
                 <Text className="text-textSecondary text-xs">{f.name}</Text>
               </TouchableOpacity>
