@@ -1,11 +1,17 @@
 import { useState } from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
 import { useEditorStore } from '@/store/editorSlice';
 import { TextEditModal } from './TextEditModal';
+
+const STICKERS = [
+  '⭐', '❤️', '🔥', '✨', '🎉', '😍', '🌈', '🌸',
+  '🦋', '🌙', '☀️', '🍀', '🎵', '💫', '🦄', '🌺',
+];
 
 export function TextToolPanel() {
   const { textLayers, addTextLayer, removeTextLayer } = useEditorStore();
   const [showModal, setShowModal] = useState(false);
+  const [showStickers, setShowStickers] = useState(false);
 
   function handleAdd(text: string, fontSize: number, color: string) {
     addTextLayer({
@@ -19,19 +25,60 @@ export function TextToolPanel() {
     setShowModal(false);
   }
 
+  function addSticker(emoji: string) {
+    addTextLayer({
+      id: `sticker_${Date.now()}`,
+      text: emoji,
+      x: 0.5,
+      y: 0.4,
+      fontSize: 56,
+      color: '#ffffff',
+    });
+  }
+
   return (
-    <View style={{ paddingHorizontal: 16, paddingVertical: 12, gap: 12 }}>
-      <TouchableOpacity
-        onPress={() => setShowModal(true)}
-        style={{
-          backgroundColor: '#6366f1',
-          paddingVertical: 12,
-          borderRadius: 12,
-          alignItems: 'center',
-        }}
-      >
-        <Text style={{ color: 'white', fontWeight: '700', fontSize: 15 }}>＋ Add Text</Text>
-      </TouchableOpacity>
+    <View style={{ paddingHorizontal: 16, paddingVertical: 12, gap: 10 }}>
+      <View style={{ flexDirection: 'row', gap: 10 }}>
+        <TouchableOpacity
+          onPress={() => setShowModal(true)}
+          style={{
+            flex: 1, backgroundColor: '#6366f1',
+            paddingVertical: 12, borderRadius: 12, alignItems: 'center',
+          }}
+        >
+          <Text style={{ color: 'white', fontWeight: '700', fontSize: 14 }}>＋ Add Text</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => setShowStickers((v) => !v)}
+          style={{
+            flex: 1,
+            backgroundColor: showStickers ? '#4f46e5' : '#2a2a2a',
+            paddingVertical: 12, borderRadius: 12, alignItems: 'center',
+          }}
+        >
+          <Text style={{ fontSize: 14, color: showStickers ? 'white' : '#a3a3a3', fontWeight: '600' }}>
+            ⭐ Stickers
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {showStickers && (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
+          {STICKERS.map((emoji) => (
+            <TouchableOpacity
+              key={emoji}
+              onPress={() => addSticker(emoji)}
+              style={{
+                width: '11%', aspectRatio: 1,
+                alignItems: 'center', justifyContent: 'center',
+                backgroundColor: '#2a2a2a', borderRadius: 10,
+              }}
+            >
+              <Text style={{ fontSize: 24 }}>{emoji}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
 
       {textLayers.length > 0 ? (
         <View style={{ gap: 8 }}>

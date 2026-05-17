@@ -3,6 +3,9 @@
     "name": "AI Photo Editor",
     "slug": "ai-photo-editor",
     "version": "1.0.0",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "userInterfaceStyle": "dark",
@@ -19,7 +22,12 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.aiphotoedit.app",
-      "googleServicesFile": "./GoogleService-Info.plist"
+      "googleServicesFile": "./GoogleService-Info.plist",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "AI Photo Editor reads your photos so you can edit them.",
+        "NSPhotoLibraryAddUsageDescription": "AI Photo Editor saves your edited photos to your library.",
+        "NSCameraUsageDescription": "AI Photo Editor can access your camera to capture photos."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -27,7 +35,16 @@
         "backgroundColor": "#0f0f0f"
       },
       "package": "com.aiphotoedit.app",
-      "googleServicesFile": "./google-services.json"
+      "versionCode": 1,
+      "googleServicesFile": "./google-services.json",
+      "permissions": [
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.VIBRATE"
+      ]
     },
     "web": {
       "favicon": "./assets/images/favicon.png",
@@ -36,20 +53,27 @@
     "plugins": [
       "expo-router",
       "expo-image-manipulator",
+      "expo-haptics",
       [
         "expo-media-library",
         {
           "photosPermission": "Allow AI Photo Editor to access your photos.",
-          "savePhotosPermission": "Allow AI Photo Editor to save photos.",
+          "savePhotosPermission": "Allow AI Photo Editor to save edited photos to your library.",
           "isAccessMediaLocationEnabled": true
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow AI Photo Editor to access your photos."
+          "photosPermission": "Allow AI Photo Editor to access your photos for editing."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "privacyPolicyUrl": "https://aiphotoedit.app/privacy",
+      "eas": {
+        "projectId": "your-eas-project-id"
+      }
+    }
   }
 }

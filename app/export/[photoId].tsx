@@ -11,6 +11,7 @@ import { savePhotoToLibrary } from '@/services/platform/media';
 import { shareFile } from '@/services/platform/share';
 import { exportFinal } from '@/services/editor/manipulator';
 import { PhotoCanvas } from '@/components/editor/PhotoCanvas';
+import { successNotification, lightTap } from '@/utils/haptics';
 
 type Format = 'jpeg' | 'png' | 'webp';
 type SizeOption = { label: string; value: number | null };
@@ -94,6 +95,7 @@ export default function ExportScreen() {
       if (!uri) throw new Error('Could not render the edited image.');
 
       await savePhotoToLibrary(uri);
+      successNotification();
       setDone(true);
 
       if (user && originalUri) {

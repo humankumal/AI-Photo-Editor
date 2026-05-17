@@ -10,12 +10,15 @@ import {
   Blur,
   Rect,
   RadialGradient,
+  Path,
 } from '@shopify/react-native-skia';
+import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
+import { useSharedValue } from 'react-native-reanimated';
 import { cacheDirectory, writeAsStringAsync, EncodingType } from 'expo-file-system/legacy';
 import { buildColorMatrix, isIdentityAdjustment } from '@/utils/colorMatrix';
 import { TextLayerNode } from './TextLayerNode';
 import type { AdjustmentParams } from '@/types/photo';
-import type { TextLayer } from '@/types/editor';
+import type { TextLayer, DrawingPath } from '@/types/editor';
 
 export type PhotoCanvasRef = {
   capture: () => Promise<string | null>;
@@ -28,10 +31,14 @@ type Props = {
   height: number;
   freeRotateDeg?: number;
   textLayers?: TextLayer[];
+  drawingPaths?: DrawingPath[];
+  liveDrawPoints?: SharedValue<{ x: number; y: number }[]>;
+  liveDrawColor?: string;
+  liveDrawWidth?: number;
 };
 
 const PhotoCanvasInner = forwardRef<PhotoCanvasRef, Props>(
-  ({ uri, adjustments, width, height, freeRotateDeg, textLayers }, ref) => {
+  ({ uri, adjustments, width, height, freeRotateDeg, textLayers, drawingPaths, liveDrawPoints, liveDrawColor, liveDrawWidth }, ref) => {
     const canvasRef = useCanvasRef();
     const image = useImage(uri);
 
@@ -72,6 +79,17 @@ const PhotoCanvasInner = forwardRef<PhotoCanvasRef, Props>(
         effectiveBlur: blur + sb,
       };
     }, [brightness, contrast, saturation, hue, sharpness, blur]);
+
+    // Build live draw path string on the worklet thread for smooth 60fps drawing
+    const _emptyPoints = useSharedValue<{ x: number; y: number }[]>([]);
+    const _livePoints = liveDrawPoints ?? _emptyPoints;
+    const livePathStr = useDerivedValue(() => {
+      const pts = _livePoints.value;
+      if (pts.length < 2) return '';
+      let d = `M ${pts[0].x} ${pts[0].y}`;
+      for (let i = 1; i < pts.length; i++) d += ` L ${pts[i].x} ${pts[i].y}`;
+      return d;
+    });
 
     if (!image) return <View style={{ width, height }} />;
 
@@ -126,7 +144,7 @@ const PhotoCanvasInner = forwardRef<PhotoCanvasRef, Props>(
           </Rect>
         )}
 
-        {/* Text overlays (rendered last so they appear on top) */}
+        {/* Text overlays */}
         {textLayers?.map((layer) => (
           <TextLayerNode
             key={layer.id}
@@ -135,6 +153,34 @@ const PhotoCanvasInner = forwardRef<PhotoCanvasRef, Props>(
             canvasHeight={height}
           />
         ))}
+
+        {/* Completed drawing strokes */}
+        {drawingPaths?.map((dp, i) => {
+          if (dp.points.length < 2) return null;
+          let d = `M ${dp.points[0].x} ${dp.points[0].y}`;
+          for (let j = 1; j < dp.points.length; j++) d += ` L ${dp.points[j].x} ${dp.points[j].y}`;
+          return (
+            <Path
+              key={i}
+              path={d}
+              color={dp.color}
+              style="stroke"
+              strokeWidth={dp.strokeWidth}
+              strokeCap="round"
+              strokeJoin="round"
+            />
+          );
+        })}
+
+        {/* Live drawing stroke (worklet-driven, 60fps) */}
+        <Path
+          path={livePathStr}
+          color={liveDrawColor ?? '#ff3b30'}
+          style="stroke"
+          strokeWidth={liveDrawWidth ?? 8}
+          strokeCap="round"
+          strokeJoin="round"
+        />
       </Canvas>
     );
   }
@@ -147,6 +193,10 @@ function adjustmentsEqual(a: Props, b: Props): boolean {
     a.height === b.height &&
     a.freeRotateDeg === b.freeRotateDeg &&
     a.textLayers === b.textLayers &&
+    a.drawingPaths === b.drawingPaths &&
+    a.liveDrawColor === b.liveDrawColor &&
+    a.liveDrawWidth === b.liveDrawWidth &&
+    // liveDrawPoints is a SharedValue ref — Skia reacts to it directly, no React re-render needed
     a.adjustments.brightness === b.adjustments.brightness &&
     a.adjustments.contrast === b.adjustments.contrast &&
     a.adjustments.saturation === b.adjustments.saturation &&

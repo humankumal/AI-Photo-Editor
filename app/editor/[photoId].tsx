@@ -23,7 +23,9 @@ import { TextToolPanel } from '@/components/editor/TextToolPanel';
 import { ImageInfoPanel } from '@/components/editor/ImageInfoPanel';
 import { HistoryTimeline } from '@/components/editor/HistoryTimeline';
 import { SavePresetModal } from '@/components/editor/SavePresetModal';
-import type { EditorTool, TextLayer } from '@/types/editor';
+import { DrawingToolbar } from '@/components/editor/DrawingToolbar';
+import { lightTap, mediumTap, successNotification } from '@/utils/haptics';
+import type { EditorTool, TextLayer, DrawingPath } from '@/types/editor';
 import type { AssetInfo } from 'expo-media-library';
 import type { AdjustmentParams } from '@/types/photo';
 
@@ -65,6 +67,7 @@ const TOOLS: { id: EditorTool; label: string }[] = [
   { id: 'crop', label: 'Crop' },
   { id: 'transform', label: 'Transform' },
   { id: 'text', label: 'Text' },
+  { id: 'draw', label: 'Draw' },
   { id: 'ai', label: 'AI' },
 ];
 
@@ -128,7 +131,7 @@ export default function EditorScreen() {
 
   const {
     initEditor, workingUri, originalUri, adjustments, appliedFilterId, textLayers,
-    applyAdjustment, applyFilter, updateTextLayer,
+    applyAdjustment, applyFilter, updateTextLayer, commitTransform,
     undo, redo, historyIndex, history,
   } = useEditorStore();
   const { activeTool, setActiveTool, setCaptureCanvas } = useUIStore();
@@ -144,6 +147,15 @@ export default function EditorScreen() {
   const [showInfoPanel, setShowInfoPanel] = useState(false);
   const [showTimeline, setShowTimeline] = useState(false);
   const [showSavePreset, setShowSavePreset] = useState(false);
+  const [drawingPaths, setDrawingPaths] = useState<DrawingPath[]>([]);
+  const [drawColor, setDrawColor] = useState('#ff3b30');
+  const [drawWidth, setDrawWidth] = useState(8);
+  const [isApplyingDrawing, setIsApplyingDrawing] = useState(false);
+  const liveDrawPoints = useSharedValue<{ x: number; y: number }[]>([]);
+  const drawColorRef = useRef(drawColor);
+  const drawWidthRef = useRef(drawWidth);
+  drawColorRef.current = drawColor;
+  drawWidthRef.current = drawWidth;
 
   useEffect(() => {
     const captureFn = () => canvasRef.current?.capture() ?? Promise.resolve(null);
@@ -172,6 +184,45 @@ export default function EditorScreen() {
 
   function handleTextPositionChange(id: string, x: number, y: number) {
     updateTextLayer(id, { x, y });
+  }
+
+  function addDrawingStroke(pts: { x: number; y: number }[]) {
+    if (pts.length < 2) return;
+    setDrawingPaths((prev) => [
+      ...prev,
+      { points: pts, color: drawColorRef.current, strokeWidth: drawWidthRef.current },
+    ]);
+  }
+
+  const drawGesture = Gesture.Pan()
+    .onBegin((e) => {
+      'worklet';
+      liveDrawPoints.value = [{ x: e.x, y: e.y }];
+    })
+    .onUpdate((e) => {
+      'worklet';
+      liveDrawPoints.value = [...liveDrawPoints.value, { x: e.x, y: e.y }];
+    })
+    .onEnd(() => {
+      'worklet';
+      const pts = liveDrawPoints.value;
+      liveDrawPoints.value = [];
+      runOnJS(addDrawingStroke)(pts);
+    });
+
+  async function handleApplyDrawing() {
+    if (!canvasRef.current) return;
+    setIsApplyingDrawing(true);
+    try {
+      const uri = await canvasRef.current.capture();
+      if (uri) {
+        commitTransform(uri);
+        setDrawingPaths([]);
+        successNotification();
+      }
+    } finally {
+      setIsApplyingDrawing(false);
+    }
   }
 
   const displayUri = workingUri ?? resolvedUri;
@@ -245,7 +296,18 @@ export default function EditorScreen() {
           height={canvasSize}
           freeRotateDeg={isShowingOriginal ? 0 : freeRotateDeg}
           textLayers={previewTextLayers}
+          drawingPaths={isShowingOriginal ? [] : drawingPaths}
+          liveDrawPoints={isShowingOriginal ? undefined : liveDrawPoints}
+          liveDrawColor={drawColor}
+          liveDrawWidth={drawWidth}
         />
+
+        {/* Drawing gesture capture overlay */}
+        {!isCropping && activeTool === 'draw' && !isShowingOriginal && (
+          <GestureDetector gesture={drawGesture}>
+            <View style={{ position: 'absolute', width: canvasSize, height: canvasSize }} />
+          </GestureDetector>
+        )}
 
         {/* Text drag handles (invisible, over canvas) */}
         {!isCropping && activeTool === 'text' && !isShowingOriginal &&
@@ -264,7 +326,7 @@ export default function EditorScreen() {
             <CropOverlay
               canvasWidth={canvasSize}
               canvasHeight={canvasSize}
-              onApply={(rect) => applyCrop(rect, canvasSize, canvasSize)}
+              onApply={(rect) => { mediumTap(); applyCrop(rect, canvasSize, canvasSize); }}
               onCancel={cancelCrop}
               imagePixelWidth={assetInfo?.width}
               imagePixelHeight={assetInfo?.height}
@@ -390,7 +452,7 @@ export default function EditorScreen() {
                     adjustments={f.adjustments}
                     label={f.name}
                     isActive={appliedFilterId === f.id}
-                    onPress={() => applyFilter(f.id, f.adjustments)}
+                    onPress={() => { lightTap(); applyFilter(f.id, f.adjustments); }}
                   />
                 ))}
               </ScrollView>
@@ -445,6 +507,19 @@ export default function EditorScreen() {
           )}
 
           {activeTool === 'text' && <TextToolPanel />}
+
+          {activeTool === 'draw' && (
+            <DrawingToolbar
+              color={drawColor}
+              strokeWidth={drawWidth}
+              hasStrokes={drawingPaths.length > 0}
+              isApplying={isApplyingDrawing}
+              onColorChange={setDrawColor}
+              onWidthChange={setDrawWidth}
+              onClear={() => setDrawingPaths([])}
+              onApply={handleApplyDrawing}
+            />
+          )}
 
           {activeTool === 'ai' && (
             <View className="px-4 py-3">

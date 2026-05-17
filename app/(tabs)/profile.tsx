@@ -1,12 +1,15 @@
 import { useEffect } from 'react';
-import { View, Text, TouchableOpacity, Image, ScrollView, FlatList, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, Image, ScrollView, ActivityIndicator } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfileStats } from '@/hooks/useProfileStats';
+import { useTheme } from '@/hooks/useTheme';
 
 export default function ProfileScreen() {
   const { user, signOut } = useAuth();
   const { totalEdits, recentEdits, loading, loadStats } = useProfileStats(user?.uid ?? null);
+  const { theme, toggleTheme } = useTheme();
 
   useEffect(() => {
     loadStats();
@@ -75,6 +78,24 @@ export default function ProfileScreen() {
             </View>
           </View>
         )}
+
+        {/* Theme toggle */}
+        <TouchableOpacity
+          className="bg-surface rounded-xl py-3 px-4 flex-row items-center justify-between mb-2"
+          onPress={toggleTheme}
+        >
+          <View className="flex-row items-center gap-3">
+            <Ionicons
+              name={theme === 'dark' ? 'moon-outline' : 'sunny-outline'}
+              size={20}
+              color="#a3a3a3"
+            />
+            <Text className="text-textPrimary font-semibold">
+              {theme === 'dark' ? 'Dark Mode' : 'Light Mode'}
+            </Text>
+          </View>
+          <Text className="text-textMuted text-sm">Tap to switch</Text>
+        </TouchableOpacity>
 
         <TouchableOpacity
           className="bg-error rounded-xl py-3 items-center"

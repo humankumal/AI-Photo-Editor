@@ -17,6 +17,12 @@ export type HistoryEntry = {
   timestamp: number;
 };
 
-export type EditorTool = 'adjust' | 'filters' | 'ai' | 'crop' | 'transform' | 'text';
+export type DrawingPath = {
+  points: { x: number; y: number }[];
+  color: string;
+  strokeWidth: number;
+};
+
+export type EditorTool = 'adjust' | 'filters' | 'ai' | 'crop' | 'transform' | 'text' | 'draw';
 
 export type AIToolType = 'caption' | 'enhance' | 'background' | 'recognize';
