@@ -3,25 +3,81 @@ import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, useWindowD
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as MediaLibrary from 'expo-media-library';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, { useSharedValue, useAnimatedStyle, runOnJS } from 'react-native-reanimated';
 import { useEditorStore } from '@/store/editorSlice';
 import { useUIStore } from '@/store/uiSlice';
 import { useAIFeatures } from '@/hooks/useAIFeatures';
 import { useCrop } from '@/hooks/useCrop';
 import { FILTER_PRESETS } from '@/constants/filters';
+import { DEFAULT_ADJUSTMENTS } from '@/services/editor/history';
 import { Colors } from '@/constants/colors';
 import { PhotoCanvas, type PhotoCanvasRef } from '@/components/editor/PhotoCanvas';
 import { CropOverlay } from '@/components/editor/CropOverlay';
 import { TransformToolbar } from '@/components/editor/TransformToolbar';
 import { AdvancedAdjustPanel } from '@/components/editor/AdvancedAdjustPanel';
-import type { EditorTool } from '@/types/editor';
+import { TextToolPanel } from '@/components/editor/TextToolPanel';
+import type { EditorTool, TextLayer } from '@/types/editor';
 
 const TOOLS: { id: EditorTool; label: string }[] = [
   { id: 'adjust', label: 'Adjust' },
   { id: 'filters', label: 'Filters' },
   { id: 'crop', label: 'Crop' },
   { id: 'transform', label: 'Transform' },
+  { id: 'text', label: 'Text' },
   { id: 'ai', label: 'AI' },
 ];
+
+const DRAG_HANDLE = 52;
+
+function TextDragHandle({
+  layer,
+  canvasSize,
+  onPositionChange,
+}: {
+  layer: TextLayer;
+  canvasSize: number;
+  onPositionChange: (id: string, x: number, y: number) => void;
+}) {
+  const tx = useSharedValue(0);
+  const ty = useSharedValue(0);
+
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: tx.value }, { translateY: ty.value }],
+  }));
+
+  const gesture = Gesture.Pan()
+    .onUpdate((e) => {
+      'worklet';
+      tx.value = e.translationX;
+      ty.value = e.translationY;
+    })
+    .onEnd((e) => {
+      'worklet';
+      const newX = Math.max(0, Math.min(1, layer.x + e.translationX / canvasSize));
+      const newY = Math.max(0, Math.min(1, layer.y + e.translationY / canvasSize));
+      runOnJS(onPositionChange)(layer.id, newX, newY);
+      tx.value = 0;
+      ty.value = 0;
+    });
+
+  return (
+    <GestureDetector gesture={gesture}>
+      <Animated.View
+        style={[
+          {
+            position: 'absolute',
+            left: layer.x * canvasSize - DRAG_HANDLE / 2,
+            top: layer.y * canvasSize - DRAG_HANDLE / 2,
+            width: DRAG_HANDLE,
+            height: DRAG_HANDLE,
+          },
+          animStyle,
+        ]}
+      />
+    </GestureDetector>
+  );
+}
 
 export default function EditorScreen() {
   const { photoId } = useLocalSearchParams<{ photoId: string }>();
@@ -31,8 +87,8 @@ export default function EditorScreen() {
   const canvasRef = useRef<PhotoCanvasRef>(null);
 
   const {
-    initEditor, workingUri, adjustments,
-    applyAdjustment, applyFilter,
+    initEditor, workingUri, originalUri, adjustments, textLayers,
+    applyAdjustment, applyFilter, updateTextLayer,
     undo, redo, historyIndex, history,
   } = useEditorStore();
   const { activeTool, setActiveTool, setCaptureCanvas } = useUIStore();
@@ -41,8 +97,8 @@ export default function EditorScreen() {
   const [resolvedUri, setResolvedUri] = useState<string | null>(null);
   const [freeRotateDeg, setFreeRotateDeg] = useState(0);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [isShowingOriginal, setIsShowingOriginal] = useState(false);
 
-  // Register canvas capture in global store for the export screen
   useEffect(() => {
     const captureFn = () => canvasRef.current?.capture() ?? Promise.resolve(null);
     setCaptureCanvas(captureFn);
@@ -63,10 +119,19 @@ export default function EditorScreen() {
     })();
   }, [decodedId]);
 
+  function handleTextPositionChange(id: string, x: number, y: number) {
+    updateTextLayer(id, { x, y });
+  }
+
   const displayUri = workingUri ?? resolvedUri;
   const canUndo = historyIndex > 0;
   const canRedo = historyIndex < history.length - 1;
   const canvasSize = width - 16;
+
+  // Before/After: show original URI without any edits
+  const previewUri = isShowingOriginal ? (originalUri ?? displayUri ?? '') : (displayUri ?? '');
+  const previewAdjustments = isShowingOriginal ? DEFAULT_ADJUSTMENTS : adjustments;
+  const previewTextLayers = isShowingOriginal ? [] : textLayers;
 
   if (!displayUri) {
     return (
@@ -83,7 +148,9 @@ export default function EditorScreen() {
       {/* Header */}
       <View className="flex-row items-center justify-between px-4 pt-12 pb-3">
         <TouchableOpacity onPress={() => router.back()} disabled={isCropping}>
-          <Text className={isCropping ? 'text-textMuted text-base' : 'text-textSecondary text-base'}>Cancel</Text>
+          <Text className={isCropping ? 'text-textMuted text-base' : 'text-textSecondary text-base'}>
+            Cancel
+          </Text>
         </TouchableOpacity>
         <Text className="text-textPrimary font-semibold">
           {isCropping ? 'Crop Photo' : 'Edit Photo'}
@@ -100,7 +167,7 @@ export default function EditorScreen() {
               <TouchableOpacity
                 className="bg-primary px-3 py-1 rounded-lg"
                 onPress={() => {
-                  setFreeRotateDeg(0); // discard unapplied free rotation
+                  setFreeRotateDeg(0);
                   router.push(`/export/${encodeURIComponent(decodedId)}`);
                 }}
               >
@@ -111,19 +178,32 @@ export default function EditorScreen() {
         </View>
       </View>
 
-      {/* Photo Canvas — no overflow:hidden so crop controls can extend below */}
+      {/* Photo Canvas */}
       <View
         className="items-center justify-center bg-black mx-2 rounded-xl"
         style={{ height: canvasSize }}
       >
         <PhotoCanvas
           ref={canvasRef}
-          uri={displayUri}
-          adjustments={adjustments}
+          uri={previewUri}
+          adjustments={previewAdjustments}
           width={canvasSize}
           height={canvasSize}
-          freeRotateDeg={freeRotateDeg}
+          freeRotateDeg={isShowingOriginal ? 0 : freeRotateDeg}
+          textLayers={previewTextLayers}
         />
+
+        {/* Text drag handles (invisible, over canvas) */}
+        {!isCropping && activeTool === 'text' && !isShowingOriginal &&
+          textLayers.map((layer) => (
+            <TextDragHandle
+              key={layer.id}
+              layer={layer}
+              canvasSize={canvasSize}
+              onPositionChange={handleTextPositionChange}
+            />
+          ))
+        }
 
         {isCropping && (
           <View style={{ position: 'absolute', top: 0, left: 0, width: canvasSize, height: canvasSize + 100 }}>
@@ -144,23 +224,34 @@ export default function EditorScreen() {
         )}
       </View>
 
-      {/* Tool Selector — hidden while cropping */}
+      {/* Before/After + Tool Selector row */}
       {!isCropping && (
-        <View className="flex-row justify-around bg-surface px-4 py-2 mt-2">
-          {TOOLS.map((t) => (
-            <TouchableOpacity
-              key={t.id}
-              onPress={() => {
-                setActiveTool(t.id);
-                if (t.id === 'crop') startCrop();
-              }}
-              className={`px-3 py-2 rounded-lg ${activeTool === t.id ? 'bg-primary' : ''}`}
-            >
-              <Text className={activeTool === t.id ? 'text-white font-semibold text-sm' : 'text-textSecondary text-sm'}>
-                {t.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
+        <View className="flex-row items-center bg-surface px-2 py-1 mt-2 gap-1">
+          <TouchableOpacity
+            onPressIn={() => setIsShowingOriginal(true)}
+            onPressOut={() => setIsShowingOriginal(false)}
+            className={`px-3 py-2 rounded-lg ${isShowingOriginal ? 'bg-surfaceHigh' : ''}`}
+          >
+            <Text className="text-textSecondary text-xs font-semibold">Before</Text>
+          </TouchableOpacity>
+          <View className="flex-1 flex-row justify-around">
+            {TOOLS.map((t) => (
+              <TouchableOpacity
+                key={t.id}
+                onPress={() => {
+                  setActiveTool(t.id);
+                  if (t.id === 'crop') startCrop();
+                }}
+                className={`px-2 py-2 rounded-lg ${activeTool === t.id ? 'bg-primary' : ''}`}
+              >
+                <Text
+                  className={activeTool === t.id ? 'text-white font-semibold text-xs' : 'text-textSecondary text-xs'}
+                >
+                  {t.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
       )}
 
@@ -194,7 +285,6 @@ export default function EditorScreen() {
                 ))}
               </View>
 
-              {/* Advanced toggle */}
               <TouchableOpacity
                 className="mx-4 bg-surfaceHigh rounded-xl py-2 items-center"
                 onPress={() => setShowAdvanced((v) => !v)}
@@ -257,6 +347,8 @@ export default function EditorScreen() {
               onFreeRotateChange={setFreeRotateDeg}
             />
           )}
+
+          {activeTool === 'text' && <TextToolPanel />}
 
           {activeTool === 'ai' && (
             <View className="px-4 py-3">

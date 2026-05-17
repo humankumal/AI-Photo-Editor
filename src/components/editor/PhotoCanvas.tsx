@@ -13,7 +13,9 @@ import {
 } from '@shopify/react-native-skia';
 import { cacheDirectory, writeAsStringAsync, EncodingType } from 'expo-file-system/legacy';
 import { buildColorMatrix, isIdentityAdjustment } from '@/utils/colorMatrix';
+import { TextLayerNode } from './TextLayerNode';
 import type { AdjustmentParams } from '@/types/photo';
+import type { TextLayer } from '@/types/editor';
 
 export type PhotoCanvasRef = {
   capture: () => Promise<string | null>;
@@ -25,10 +27,11 @@ type Props = {
   width: number;
   height: number;
   freeRotateDeg?: number;
+  textLayers?: TextLayer[];
 };
 
 export const PhotoCanvas = forwardRef<PhotoCanvasRef, Props>(
-  ({ uri, adjustments, width, height, freeRotateDeg }, ref) => {
+  ({ uri, adjustments, width, height, freeRotateDeg, textLayers }, ref) => {
     const canvasRef = useCanvasRef();
     const image = useImage(uri);
 
@@ -116,6 +119,16 @@ export const PhotoCanvas = forwardRef<PhotoCanvasRef, Props>(
             />
           </Rect>
         )}
+
+        {/* Text overlays (rendered last so they appear on top) */}
+        {textLayers?.map((layer) => (
+          <TextLayerNode
+            key={layer.id}
+            layer={layer}
+            canvasWidth={width}
+            canvasHeight={height}
+          />
+        ))}
       </Canvas>
     );
   }

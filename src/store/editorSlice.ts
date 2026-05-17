@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { AdjustmentParams } from '@/types/photo';
-import type { HistoryEntry } from '@/types/editor';
+import type { HistoryEntry, TextLayer } from '@/types/editor';
 import { DEFAULT_ADJUSTMENTS, pushHistory } from '@/services/editor/history';
 
 type EditorState = {
@@ -9,6 +9,7 @@ type EditorState = {
   workingUri: string | null;
   adjustments: AdjustmentParams;
   appliedFilterId: string | null;
+  textLayers: TextLayer[];
   history: HistoryEntry[];
   historyIndex: number;
 };
@@ -19,6 +20,9 @@ type EditorActions = {
   applyAdjustment: (params: Partial<AdjustmentParams>) => void;
   applyFilter: (filterId: string, adjustments: AdjustmentParams) => void;
   commitTransform: (uri: string) => void;
+  addTextLayer: (layer: TextLayer) => void;
+  removeTextLayer: (id: string) => void;
+  updateTextLayer: (id: string, update: Partial<Pick<TextLayer, 'x' | 'y'>>) => void;
   undo: () => void;
   redo: () => void;
   resetEditor: () => void;
@@ -30,6 +34,7 @@ const initialState: EditorState = {
   workingUri: null,
   adjustments: { ...DEFAULT_ADJUSTMENTS },
   appliedFilterId: null,
+  textLayers: [],
   history: [],
   historyIndex: -1,
 };
@@ -42,6 +47,7 @@ export const useEditorStore = create<EditorState & EditorActions>((set, get) => 
       workingUri: uri,
       adjustments: { ...DEFAULT_ADJUSTMENTS },
       appliedFilterId: null,
+      textLayers: [],
       timestamp: Date.now(),
     };
     set({
@@ -50,6 +56,7 @@ export const useEditorStore = create<EditorState & EditorActions>((set, get) => 
       workingUri: uri,
       adjustments: { ...DEFAULT_ADJUSTMENTS },
       appliedFilterId: null,
+      textLayers: [],
       history: [entry],
       historyIndex: 0,
     });
@@ -60,12 +67,13 @@ export const useEditorStore = create<EditorState & EditorActions>((set, get) => 
   },
 
   applyAdjustment(params) {
-    const { adjustments, workingUri, appliedFilterId, history, historyIndex } = get();
+    const { adjustments, workingUri, appliedFilterId, textLayers, history, historyIndex } = get();
     const next = { ...adjustments, ...params };
     const entry: HistoryEntry = {
       workingUri: workingUri!,
       adjustments: next,
       appliedFilterId,
+      textLayers,
       timestamp: Date.now(),
     };
     const trimmed = history.slice(0, historyIndex + 1);
@@ -73,25 +81,13 @@ export const useEditorStore = create<EditorState & EditorActions>((set, get) => 
     set({ adjustments: next, history: newHistory, historyIndex: newHistory.length - 1 });
   },
 
-  commitTransform(uri) {
-    const { adjustments, appliedFilterId, history, historyIndex } = get();
-    const entry: HistoryEntry = {
-      workingUri: uri,
-      adjustments,
-      appliedFilterId,
-      timestamp: Date.now(),
-    };
-    const trimmed = history.slice(0, historyIndex + 1);
-    const newHistory = pushHistory(trimmed, entry);
-    set({ workingUri: uri, history: newHistory, historyIndex: newHistory.length - 1 });
-  },
-
   applyFilter(filterId, adjustments) {
-    const { workingUri, history, historyIndex } = get();
+    const { workingUri, textLayers, history, historyIndex } = get();
     const entry: HistoryEntry = {
       workingUri: workingUri!,
       adjustments,
       appliedFilterId: filterId,
+      textLayers,
       timestamp: Date.now(),
     };
     const trimmed = history.slice(0, historyIndex + 1);
@@ -99,12 +95,67 @@ export const useEditorStore = create<EditorState & EditorActions>((set, get) => 
     set({ adjustments, appliedFilterId: filterId, history: newHistory, historyIndex: newHistory.length - 1 });
   },
 
+  commitTransform(uri) {
+    const { adjustments, appliedFilterId, textLayers, history, historyIndex } = get();
+    const entry: HistoryEntry = {
+      workingUri: uri,
+      adjustments,
+      appliedFilterId,
+      textLayers,
+      timestamp: Date.now(),
+    };
+    const trimmed = history.slice(0, historyIndex + 1);
+    const newHistory = pushHistory(trimmed, entry);
+    set({ workingUri: uri, history: newHistory, historyIndex: newHistory.length - 1 });
+  },
+
+  addTextLayer(layer) {
+    const { textLayers, workingUri, adjustments, appliedFilterId, history, historyIndex } = get();
+    const newLayers = [...textLayers, layer];
+    const entry: HistoryEntry = {
+      workingUri: workingUri!,
+      adjustments,
+      appliedFilterId,
+      textLayers: newLayers,
+      timestamp: Date.now(),
+    };
+    const trimmed = history.slice(0, historyIndex + 1);
+    const newHistory = pushHistory(trimmed, entry);
+    set({ textLayers: newLayers, history: newHistory, historyIndex: newHistory.length - 1 });
+  },
+
+  removeTextLayer(id) {
+    const { textLayers, workingUri, adjustments, appliedFilterId, history, historyIndex } = get();
+    const newLayers = textLayers.filter((l) => l.id !== id);
+    const entry: HistoryEntry = {
+      workingUri: workingUri!,
+      adjustments,
+      appliedFilterId,
+      textLayers: newLayers,
+      timestamp: Date.now(),
+    };
+    const trimmed = history.slice(0, historyIndex + 1);
+    const newHistory = pushHistory(trimmed, entry);
+    set({ textLayers: newLayers, history: newHistory, historyIndex: newHistory.length - 1 });
+  },
+
+  updateTextLayer(id, update) {
+    const { textLayers } = get();
+    set({ textLayers: textLayers.map((l) => (l.id === id ? { ...l, ...update } : l)) });
+  },
+
   undo() {
     const { history, historyIndex } = get();
     if (historyIndex <= 0) return;
     const newIndex = historyIndex - 1;
     const entry = history[newIndex];
-    set({ historyIndex: newIndex, workingUri: entry.workingUri, adjustments: entry.adjustments, appliedFilterId: entry.appliedFilterId });
+    set({
+      historyIndex: newIndex,
+      workingUri: entry.workingUri,
+      adjustments: entry.adjustments,
+      appliedFilterId: entry.appliedFilterId,
+      textLayers: entry.textLayers ?? [],
+    });
   },
 
   redo() {
@@ -112,7 +163,13 @@ export const useEditorStore = create<EditorState & EditorActions>((set, get) => 
     if (historyIndex >= history.length - 1) return;
     const newIndex = historyIndex + 1;
     const entry = history[newIndex];
-    set({ historyIndex: newIndex, workingUri: entry.workingUri, adjustments: entry.adjustments, appliedFilterId: entry.appliedFilterId });
+    set({
+      historyIndex: newIndex,
+      workingUri: entry.workingUri,
+      adjustments: entry.adjustments,
+      appliedFilterId: entry.appliedFilterId,
+      textLayers: entry.textLayers ?? [],
+    });
   },
 
   resetEditor() {
