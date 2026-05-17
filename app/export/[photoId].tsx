@@ -4,33 +4,42 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEditorStore } from '@/store/editorSlice';
 import { useUIStore } from '@/store/uiSlice';
+import { useAIStore } from '@/store/aiSlice';
+import { useAuth } from '@/hooks/useAuth';
+import { useFirestorePhoto } from '@/hooks/useFirestorePhoto';
 import { savePhotoToLibrary } from '@/services/platform/media';
 import { shareFile } from '@/services/platform/share';
 import { exportFinal } from '@/services/editor/manipulator';
 import { PhotoCanvas } from '@/components/editor/PhotoCanvas';
-import { Colors } from '@/constants/colors';
 
 export default function ExportScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
+  const { photoId } = useLocalSearchParams<{ photoId: string }>();
+  const decodedId = decodeURIComponent(photoId ?? '');
+
   const workingUri = useEditorStore((s) => s.workingUri);
+  const originalUri = useEditorStore((s) => s.originalUri);
   const adjustments = useEditorStore((s) => s.adjustments);
+  const appliedFilterId = useEditorStore((s) => s.appliedFilterId);
   const captureCanvas = useUIStore((s) => s.captureCanvas);
+  const aiResults = useAIStore((s) => s.results[decodedId] ?? {});
+  const { user } = useAuth();
+  const { saveEdit } = useFirestorePhoto(user?.uid ?? null);
 
   const [quality, setQuality] = useState(0.9);
   const [done, setDone] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [cloudSaved, setCloudSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const previewSize = width - 32;
 
   async function getFinalUri(): Promise<string | null> {
-    // Prefer Skia canvas capture (includes color adjustments)
     if (captureCanvas) {
       const uri = await captureCanvas();
       if (uri) return uri;
     }
-    // Fallback: use manipulator (no color adjustments, but correct for crop/rotate)
     if (!workingUri) return null;
     return exportFinal(workingUri, quality, 'jpeg');
   }
@@ -41,8 +50,23 @@ export default function ExportScreen() {
     try {
       const uri = await getFinalUri();
       if (!uri) throw new Error('Could not render the edited image.');
+
+      // Save locally first
       await savePhotoToLibrary(uri);
       setDone(true);
+
+      // Then save to cloud (non-blocking for UX — errors are swallowed in the hook)
+      if (user && originalUri) {
+        await saveEdit({
+          photoId: decodedId,
+          editedUri: uri,
+          originalUri,
+          adjustments,
+          appliedFilterId,
+          aiResults,
+        });
+        setCloudSaved(true);
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Save failed.');
     } finally {
@@ -75,7 +99,7 @@ export default function ExportScreen() {
         <View className="w-10" />
       </View>
 
-      {/* Live preview with adjustments */}
+      {/* Live preview with adjustments applied */}
       {workingUri && (
         <View
           className="mx-4 bg-black rounded-2xl overflow-hidden mb-6 items-center justify-center"
@@ -107,8 +131,11 @@ export default function ExportScreen() {
         </View>
 
         {done ? (
-          <View className="bg-success/20 rounded-xl py-3 items-center mb-3">
-            <Text className="text-success font-semibold">Saved to camera roll!</Text>
+          <View className="bg-success/20 rounded-xl py-3 px-4 mb-3">
+            <Text className="text-success font-semibold text-center">Saved to camera roll!</Text>
+            {cloudSaved && (
+              <Text className="text-success/70 text-xs text-center mt-1">Also saved to cloud</Text>
+            )}
           </View>
         ) : (
           <TouchableOpacity

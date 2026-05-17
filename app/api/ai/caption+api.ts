@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { CAPTION_SYSTEM, CAPTION_USER } from '../../../src/services/claude/prompts';
+import { extractJson } from '../../../src/utils/extractJson';
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -29,7 +30,7 @@ export async function POST(request: Request): Promise<Response> {
     });
 
     const text = message.content[0].type === 'text' ? message.content[0].text : '';
-    const result = JSON.parse(text);
+    const result = extractJson(text);
     return Response.json(result);
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Internal server error';
