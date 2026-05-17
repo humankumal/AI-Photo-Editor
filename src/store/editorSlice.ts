@@ -23,6 +23,7 @@ type EditorActions = {
   addTextLayer: (layer: TextLayer) => void;
   removeTextLayer: (id: string) => void;
   updateTextLayer: (id: string, update: Partial<Pick<TextLayer, 'x' | 'y'>>) => void;
+  jumpToHistory: (index: number) => void;
   undo: () => void;
   redo: () => void;
   resetEditor: () => void;
@@ -142,6 +143,19 @@ export const useEditorStore = create<EditorState & EditorActions>((set, get) => 
   updateTextLayer(id, update) {
     const { textLayers } = get();
     set({ textLayers: textLayers.map((l) => (l.id === id ? { ...l, ...update } : l)) });
+  },
+
+  jumpToHistory(index) {
+    const { history } = get();
+    if (index < 0 || index >= history.length) return;
+    const entry = history[index];
+    set({
+      historyIndex: index,
+      workingUri: entry.workingUri,
+      adjustments: entry.adjustments,
+      appliedFilterId: entry.appliedFilterId,
+      textLayers: entry.textLayers ?? [],
+    });
   },
 
   undo() {

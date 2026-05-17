@@ -4,6 +4,8 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
+  useAnimatedReaction,
+  runOnJS,
 } from 'react-native-reanimated';
 
 export type CropRect = {
@@ -18,6 +20,8 @@ type Props = {
   canvasHeight: number;
   onApply: (crop: CropRect) => void;
   onCancel: () => void;
+  imagePixelWidth?: number;
+  imagePixelHeight?: number;
 };
 
 const MIN_SIZE = 48;
@@ -32,8 +36,9 @@ const ASPECT_OPTIONS: AspectOption[] = [
   { label: '16:9', ratio: 16 / 9 },
 ];
 
-export function CropOverlay({ canvasWidth, canvasHeight, onApply, onCancel }: Props) {
+export function CropOverlay({ canvasWidth, canvasHeight, onApply, onCancel, imagePixelWidth, imagePixelHeight }: Props) {
   const [selectedAspectIdx, setSelectedAspectIdx] = useState(0);
+  const [dimReadout, setDimReadout] = useState('');
 
   const left = useSharedValue(canvasWidth * 0.1);
   const top = useSharedValue(canvasHeight * 0.1);
@@ -50,6 +55,18 @@ export function CropOverlay({ canvasWidth, canvasHeight, onApply, onCancel }: Pr
     borderWidth: 2,
     borderColor: 'white',
   }));
+
+  // Live pixel dimension readout
+  useAnimatedReaction(
+    () => ({ w: right.value - left.value, h: bottom.value - top.value }),
+    ({ w, h }) => {
+      if (imagePixelWidth && imagePixelHeight) {
+        const pw = Math.round((w / canvasWidth) * imagePixelWidth);
+        const ph = Math.round((h / canvasHeight) * imagePixelHeight);
+        runOnJS(setDimReadout)(`${pw} × ${ph} px`);
+      }
+    }
+  );
 
   // Track previous translation to compute per-frame delta
   const prevTx = useSharedValue(0);
@@ -196,6 +213,11 @@ export function CropOverlay({ canvasWidth, canvasHeight, onApply, onCancel }: Pr
             <View style={{ position: 'absolute', left: '66.6%', top: 0, bottom: 0, width: 1, backgroundColor: 'rgba(255,255,255,0.35)' }} />
             <View style={{ position: 'absolute', top: '33.3%', left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.35)' }} />
             <View style={{ position: 'absolute', top: '66.6%', left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.35)' }} />
+            {dimReadout ? (
+              <View style={{ position: 'absolute', bottom: 6, alignSelf: 'center', backgroundColor: 'rgba(0,0,0,0.55)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+                <Text style={{ color: 'white', fontSize: 11, fontWeight: '600' }}>{dimReadout}</Text>
+              </View>
+            ) : null}
           </Animated.View>
         </GestureDetector>
 

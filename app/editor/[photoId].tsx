@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, useWindowD
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as MediaLibrary from 'expo-media-library';
+import { Ionicons } from '@expo/vector-icons';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useSharedValue, useAnimatedStyle, runOnJS } from 'react-native-reanimated';
 import { useEditorStore } from '@/store/editorSlice';
@@ -17,7 +18,10 @@ import { CropOverlay } from '@/components/editor/CropOverlay';
 import { TransformToolbar } from '@/components/editor/TransformToolbar';
 import { AdvancedAdjustPanel } from '@/components/editor/AdvancedAdjustPanel';
 import { TextToolPanel } from '@/components/editor/TextToolPanel';
+import { ImageInfoPanel } from '@/components/editor/ImageInfoPanel';
+import { HistoryTimeline } from '@/components/editor/HistoryTimeline';
 import type { EditorTool, TextLayer } from '@/types/editor';
+import type { AssetInfo } from 'expo-media-library';
 
 const TOOLS: { id: EditorTool; label: string }[] = [
   { id: 'adjust', label: 'Adjust' },
@@ -95,9 +99,12 @@ export default function EditorScreen() {
   const { run, loading: aiLoading, results: aiResults } = useAIFeatures(decodedId, workingUri);
   const { isCropping, isApplying, startCrop, cancelCrop, applyCrop } = useCrop();
   const [resolvedUri, setResolvedUri] = useState<string | null>(null);
+  const [assetInfo, setAssetInfo] = useState<AssetInfo | null>(null);
   const [freeRotateDeg, setFreeRotateDeg] = useState(0);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [isShowingOriginal, setIsShowingOriginal] = useState(false);
+  const [showInfoPanel, setShowInfoPanel] = useState(false);
+  const [showTimeline, setShowTimeline] = useState(false);
 
   useEffect(() => {
     const captureFn = () => canvasRef.current?.capture() ?? Promise.resolve(null);
@@ -109,6 +116,7 @@ export default function EditorScreen() {
     (async () => {
       try {
         const asset = await MediaLibrary.getAssetInfoAsync(decodedId);
+        setAssetInfo(asset);
         const uri = asset.localUri ?? asset.uri;
         setResolvedUri(uri);
         initEditor(decodedId, uri);
@@ -158,6 +166,9 @@ export default function EditorScreen() {
         <View className="flex-row items-center gap-3">
           {!isCropping && (
             <>
+              <TouchableOpacity onPress={() => setShowInfoPanel(true)}>
+                <Ionicons name="information-circle-outline" size={22} color={Colors.textSecondary} />
+              </TouchableOpacity>
               <TouchableOpacity onPress={undo} disabled={!canUndo}>
                 <Text className={!canUndo ? 'text-textMuted text-sm' : 'text-primary text-sm'}>Undo</Text>
               </TouchableOpacity>
@@ -212,6 +223,8 @@ export default function EditorScreen() {
               canvasHeight={canvasSize}
               onApply={(rect) => applyCrop(rect, canvasSize, canvasSize)}
               onCancel={cancelCrop}
+              imagePixelWidth={assetInfo?.width}
+              imagePixelHeight={assetInfo?.height}
             />
           </View>
         )}
@@ -223,6 +236,9 @@ export default function EditorScreen() {
           </View>
         )}
       </View>
+
+      {/* History Timeline */}
+      {!isCropping && showTimeline && <HistoryTimeline />}
 
       {/* Before/After + Tool Selector row */}
       {!isCropping && (
@@ -252,8 +268,21 @@ export default function EditorScreen() {
               </TouchableOpacity>
             ))}
           </View>
+          <TouchableOpacity
+            onPress={() => setShowTimeline((v) => !v)}
+            className={`px-2 py-2 rounded-lg ${showTimeline ? 'bg-surfaceHigh' : ''}`}
+          >
+            <Ionicons name="time-outline" size={16} color={Colors.textSecondary} />
+          </TouchableOpacity>
         </View>
       )}
+
+      <ImageInfoPanel
+        visible={showInfoPanel}
+        onClose={() => setShowInfoPanel(false)}
+        workingUri={workingUri}
+        assetInfo={assetInfo}
+      />
 
       {/* Tool Panel */}
       {!isCropping && (
