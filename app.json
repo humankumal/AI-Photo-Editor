@@ -52,8 +52,6 @@
     },
     "plugins": [
       "expo-router",
-      "expo-image-manipulator",
-      "expo-haptics",
       [
         "expo-media-library",
         {
