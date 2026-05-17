@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { View, Text, FlatList, TouchableOpacity, Image, Dimensions, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, Image, Dimensions, ActivityIndicator, ScrollView, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { usePhotoLibrary } from '@/hooks/usePhotoLibrary';
@@ -115,8 +115,20 @@ export default function HomeScreen() {
       )}
 
       {!libraryLoading && hasPermission && photos.length === 0 && (
-        <View className="flex-1 items-center justify-center px-8">
-          <Text className="text-textSecondary text-center">No photos found in your library.</Text>
+        <View className="flex-1 items-center justify-center px-8 gap-4">
+          <Text className="text-textSecondary text-center text-base">
+            {Platform.OS === 'web'
+              ? 'Pick a photo from your device to start editing.'
+              : 'No photos found in your library.'}
+          </Text>
+          {Platform.OS === 'web' && (
+            <TouchableOpacity
+              className="bg-primary px-8 py-4 rounded-2xl"
+              onPress={handlePick}
+            >
+              <Text className="text-white font-bold text-base">Choose a Photo</Text>
+            </TouchableOpacity>
+          )}
         </View>
       )}
 

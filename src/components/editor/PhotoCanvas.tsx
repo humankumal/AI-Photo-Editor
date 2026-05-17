@@ -1,5 +1,5 @@
-import { forwardRef, useImperativeHandle } from 'react';
-import { View } from 'react-native';
+import { forwardRef, memo, useImperativeHandle, useMemo } from 'react';
+import { View, Platform } from 'react-native';
 import {
   Canvas,
   Image,
@@ -30,7 +30,7 @@ type Props = {
   textLayers?: TextLayer[];
 };
 
-export const PhotoCanvas = forwardRef<PhotoCanvasRef, Props>(
+const PhotoCanvasInner = forwardRef<PhotoCanvasRef, Props>(
   ({ uri, adjustments, width, height, freeRotateDeg, textLayers }, ref) => {
     const canvasRef = useCanvasRef();
     const image = useImage(uri);
@@ -46,7 +46,13 @@ export const PhotoCanvas = forwardRef<PhotoCanvasRef, Props>(
             binary += String.fromCharCode(bytes[i]);
           }
           const base64 = btoa(binary);
-          const path = `${cacheDirectory ?? ''}edited_${Date.now()}.jpg`;
+
+          // On web, file system isn't available — return a data URL instead
+          if (Platform.OS === 'web' || !cacheDirectory) {
+            return `data:image/jpeg;base64,${base64}`;
+          }
+
+          const path = `${cacheDirectory}edited_${Date.now()}.jpg`;
           await writeAsStringAsync(path, base64, { encoding: EncodingType.Base64 });
           return path;
         } catch {
@@ -57,15 +63,15 @@ export const PhotoCanvas = forwardRef<PhotoCanvasRef, Props>(
 
     const { brightness, contrast, saturation, hue, sharpness, vignette, blur } = adjustments;
 
-    // Sharpness > 1 boosts contrast; sharpness < 1 adds blur
-    const effectiveContrast = sharpness > 1
-      ? contrast * (1 + (sharpness - 1) * 0.4)
-      : contrast;
-    const sharpnessBlur = sharpness < 1 ? (1 - sharpness) * 3 : 0;
-    const effectiveBlur = blur + sharpnessBlur;
-
-    const matrix = buildColorMatrix(brightness, effectiveContrast, saturation, hue);
-    const noColorAdjust = isIdentityAdjustment(brightness, effectiveContrast, saturation, hue);
+    const { matrix, noColorAdjust, effectiveBlur } = useMemo(() => {
+      const ec = sharpness > 1 ? contrast * (1 + (sharpness - 1) * 0.4) : contrast;
+      const sb = sharpness < 1 ? (1 - sharpness) * 3 : 0;
+      return {
+        matrix: buildColorMatrix(brightness, ec, saturation, hue),
+        noColorAdjust: isIdentityAdjustment(brightness, ec, saturation, hue),
+        effectiveBlur: blur + sb,
+      };
+    }, [brightness, contrast, saturation, hue, sharpness, blur]);
 
     if (!image) return <View style={{ width, height }} />;
 
@@ -134,4 +140,22 @@ export const PhotoCanvas = forwardRef<PhotoCanvasRef, Props>(
   }
 );
 
+function adjustmentsEqual(a: Props, b: Props): boolean {
+  return (
+    a.uri === b.uri &&
+    a.width === b.width &&
+    a.height === b.height &&
+    a.freeRotateDeg === b.freeRotateDeg &&
+    a.textLayers === b.textLayers &&
+    a.adjustments.brightness === b.adjustments.brightness &&
+    a.adjustments.contrast === b.adjustments.contrast &&
+    a.adjustments.saturation === b.adjustments.saturation &&
+    a.adjustments.hue === b.adjustments.hue &&
+    a.adjustments.sharpness === b.adjustments.sharpness &&
+    a.adjustments.vignette === b.adjustments.vignette &&
+    a.adjustments.blur === b.adjustments.blur
+  );
+}
+
+export const PhotoCanvas = memo(PhotoCanvasInner, adjustmentsEqual);
 PhotoCanvas.displayName = 'PhotoCanvas';

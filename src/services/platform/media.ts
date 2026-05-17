@@ -35,7 +35,7 @@ export async function pickPhotoFromLibrary(): Promise<Photo | null> {
   if (result.canceled || !result.assets[0]) return null;
   const asset = result.assets[0];
   return {
-    id: asset.assetId ?? String(Date.now()),
+    id: asset.assetId ?? asset.uri ?? String(Date.now()),
     uri: asset.uri,
     width: asset.width,
     height: asset.height,
@@ -44,6 +44,13 @@ export async function pickPhotoFromLibrary(): Promise<Photo | null> {
 }
 
 export async function savePhotoToLibrary(uri: string): Promise<void> {
-  if (Platform.OS === 'web') return;
+  if (Platform.OS === 'web') {
+    // Trigger a browser download
+    const link = document.createElement('a');
+    link.href = uri;
+    link.download = `edited-photo-${Date.now()}.jpg`;
+    link.click();
+    return;
+  }
   await MediaLibrary.saveToLibraryAsync(uri);
 }

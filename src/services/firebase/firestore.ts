@@ -3,6 +3,7 @@ import {
   doc,
   setDoc,
   getDoc,
+  deleteDoc,
   collection,
   query,
   orderBy,
@@ -11,6 +12,7 @@ import {
 } from 'firebase/firestore';
 import { firebaseApp } from './config';
 import type { FirestorePhotoDoc } from '@/types/firebase';
+import type { UserPreset } from '@/types/preset';
 
 export const db = getFirestore(firebaseApp);
 
@@ -35,4 +37,27 @@ export async function getUserPhotos(userId: string, count = 30): Promise<Firesto
   );
   const snap = await getDocs(q);
   return snap.docs.map((d) => d.data() as FirestorePhotoDoc);
+}
+
+// ── User presets ──────────────────────────────────────────────────────────────
+
+function presetRef(userId: string, presetId: string) {
+  return doc(db, 'presets', userId, 'items', presetId);
+}
+
+export async function saveUserPreset(userId: string, preset: UserPreset): Promise<void> {
+  await setDoc(presetRef(userId, preset.id), preset);
+}
+
+export async function deleteUserPreset(userId: string, presetId: string): Promise<void> {
+  await deleteDoc(presetRef(userId, presetId));
+}
+
+export async function getUserPresets(userId: string): Promise<UserPreset[]> {
+  const q = query(
+    collection(db, 'presets', userId, 'items'),
+    orderBy('createdAt', 'desc')
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => d.data() as UserPreset);
 }

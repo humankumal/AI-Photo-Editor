@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, memo } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -10,6 +10,8 @@ import { useEditorStore } from '@/store/editorSlice';
 import { useUIStore } from '@/store/uiSlice';
 import { useAIFeatures } from '@/hooks/useAIFeatures';
 import { useCrop } from '@/hooks/useCrop';
+import { useCustomPresets } from '@/hooks/useCustomPresets';
+import { useAuth } from '@/hooks/useAuth';
 import { FILTER_PRESETS } from '@/constants/filters';
 import { DEFAULT_ADJUSTMENTS } from '@/services/editor/history';
 import { Colors } from '@/constants/colors';
@@ -20,8 +22,42 @@ import { AdvancedAdjustPanel } from '@/components/editor/AdvancedAdjustPanel';
 import { TextToolPanel } from '@/components/editor/TextToolPanel';
 import { ImageInfoPanel } from '@/components/editor/ImageInfoPanel';
 import { HistoryTimeline } from '@/components/editor/HistoryTimeline';
+import { SavePresetModal } from '@/components/editor/SavePresetModal';
 import type { EditorTool, TextLayer } from '@/types/editor';
 import type { AssetInfo } from 'expo-media-library';
+import type { AdjustmentParams } from '@/types/photo';
+
+// Memoized so filter thumbnails don't re-render on unrelated editor state changes
+const FilterTile = memo(function FilterTile({
+  uri,
+  adjustments,
+  label,
+  isActive,
+  onPress,
+  onLongPress,
+}: {
+  uri: string;
+  adjustments: AdjustmentParams;
+  label: string;
+  isActive: boolean;
+  onPress: () => void;
+  onLongPress?: () => void;
+}) {
+  return (
+    <TouchableOpacity className="items-center mr-4" onPress={onPress} onLongPress={onLongPress}>
+      <View
+        style={{
+          width: 64, height: 64, borderRadius: 12, overflow: 'hidden',
+          borderWidth: 2, borderColor: isActive ? '#6366f1' : 'transparent',
+          marginBottom: 4,
+        }}
+      >
+        <PhotoCanvas uri={uri} adjustments={adjustments} width={64} height={64} />
+      </View>
+      <Text style={{ color: '#a3a3a3', fontSize: 11 }} numberOfLines={1}>{label}</Text>
+    </TouchableOpacity>
+  );
+});
 
 const TOOLS: { id: EditorTool; label: string }[] = [
   { id: 'adjust', label: 'Adjust' },
@@ -91,13 +127,15 @@ export default function EditorScreen() {
   const canvasRef = useRef<PhotoCanvasRef>(null);
 
   const {
-    initEditor, workingUri, originalUri, adjustments, textLayers,
+    initEditor, workingUri, originalUri, adjustments, appliedFilterId, textLayers,
     applyAdjustment, applyFilter, updateTextLayer,
     undo, redo, historyIndex, history,
   } = useEditorStore();
   const { activeTool, setActiveTool, setCaptureCanvas } = useUIStore();
   const { run, loading: aiLoading, results: aiResults } = useAIFeatures(decodedId, workingUri);
   const { isCropping, isApplying, startCrop, cancelCrop, applyCrop } = useCrop();
+  const { user } = useAuth();
+  const { presets, loadPresets, savePreset, deletePreset } = useCustomPresets(user?.uid ?? null);
   const [resolvedUri, setResolvedUri] = useState<string | null>(null);
   const [assetInfo, setAssetInfo] = useState<AssetInfo | null>(null);
   const [freeRotateDeg, setFreeRotateDeg] = useState(0);
@@ -105,12 +143,17 @@ export default function EditorScreen() {
   const [isShowingOriginal, setIsShowingOriginal] = useState(false);
   const [showInfoPanel, setShowInfoPanel] = useState(false);
   const [showTimeline, setShowTimeline] = useState(false);
+  const [showSavePreset, setShowSavePreset] = useState(false);
 
   useEffect(() => {
     const captureFn = () => canvasRef.current?.capture() ?? Promise.resolve(null);
     setCaptureCanvas(captureFn);
     return () => setCaptureCanvas(null);
   }, []);
+
+  useEffect(() => {
+    loadPresets();
+  }, [loadPresets]);
 
   useEffect(() => {
     (async () => {
@@ -284,6 +327,15 @@ export default function EditorScreen() {
         assetInfo={assetInfo}
       />
 
+      <SavePresetModal
+        visible={showSavePreset}
+        onSave={(name) => {
+          savePreset(name, adjustments);
+          setShowSavePreset(false);
+        }}
+        onCancel={() => setShowSavePreset(false)}
+      />
+
       {/* Tool Panel */}
       {!isCropping && (
         <View className="bg-surface pb-8" style={{ minHeight: 140 }}>
@@ -328,32 +380,47 @@ export default function EditorScreen() {
           )}
 
           {activeTool === 'filters' && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="px-4 py-3">
-              {FILTER_PRESETS.map((f) => (
-                <TouchableOpacity
-                  key={f.id}
-                  className="items-center mr-4"
-                  onPress={() => applyFilter(f.id, f.adjustments)}
-                >
-                  <View
-                    className={`w-16 h-16 rounded-xl mb-1 overflow-hidden border-2 ${
-                      adjustments.brightness === f.adjustments.brightness &&
-                      adjustments.saturation === f.adjustments.saturation
-                        ? 'border-primary'
-                        : 'border-transparent'
-                    }`}
-                  >
-                    <PhotoCanvas
+            <View className="py-3">
+              {/* Built-in presets */}
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} className="px-4 mb-3">
+                {FILTER_PRESETS.map((f) => (
+                  <FilterTile
+                    key={f.id}
+                    uri={displayUri}
+                    adjustments={f.adjustments}
+                    label={f.name}
+                    isActive={appliedFilterId === f.id}
+                    onPress={() => applyFilter(f.id, f.adjustments)}
+                  />
+                ))}
+              </ScrollView>
+
+              {/* User presets row */}
+              {presets.length > 0 && (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} className="px-4 mb-2">
+                  {presets.map((p) => (
+                    <FilterTile
+                      key={p.id}
                       uri={displayUri}
-                      adjustments={f.adjustments}
-                      width={64}
-                      height={64}
+                      adjustments={p.adjustments}
+                      label={p.name}
+                      isActive={appliedFilterId === p.id}
+                      onPress={() => applyFilter(p.id, p.adjustments)}
+                      onLongPress={() => deletePreset(p.id)}
                     />
-                  </View>
-                  <Text className="text-textSecondary text-xs">{f.name}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+                  ))}
+                </ScrollView>
+              )}
+
+              {/* Save current as preset */}
+              <TouchableOpacity
+                className="mx-4 bg-surfaceHigh rounded-xl py-2 items-center flex-row justify-center gap-2"
+                onPress={() => setShowSavePreset(true)}
+              >
+                <Ionicons name="bookmark-outline" size={14} color={Colors.textSecondary} />
+                <Text className="text-textSecondary text-sm font-semibold">Save current as Preset</Text>
+              </TouchableOpacity>
+            </View>
           )}
 
           {activeTool === 'crop' && !isCropping && (
