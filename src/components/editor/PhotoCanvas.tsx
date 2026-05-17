@@ -1,4 +1,4 @@
-import { forwardRef, useImperativeHandle, useRef } from 'react';
+import { forwardRef, useImperativeHandle } from 'react';
 import { View } from 'react-native';
 import {
   Canvas,
@@ -7,6 +7,9 @@ import {
   ColorMatrix,
   useCanvasRef,
   Group,
+  Blur,
+  Rect,
+  RadialGradient,
 } from '@shopify/react-native-skia';
 import { cacheDirectory, writeAsStringAsync, EncodingType } from 'expo-file-system/legacy';
 import { buildColorMatrix, isIdentityAdjustment } from '@/utils/colorMatrix';
@@ -35,7 +38,6 @@ export const PhotoCanvas = forwardRef<PhotoCanvasRef, Props>(
         try {
           const snapshot = canvasRef.current.makeImageSnapshot();
           const bytes = snapshot.encodeToBytes();
-          // Convert Uint8Array to base64
           let binary = '';
           for (let i = 0; i < bytes.length; i++) {
             binary += String.fromCharCode(bytes[i]);
@@ -50,15 +52,21 @@ export const PhotoCanvas = forwardRef<PhotoCanvasRef, Props>(
       },
     }));
 
-    const matrix = buildColorMatrix(
-      adjustments.brightness,
-      adjustments.contrast,
-      adjustments.saturation
-    );
+    const { brightness, contrast, saturation, hue, sharpness, vignette, blur } = adjustments;
+
+    // Sharpness > 1 boosts contrast; sharpness < 1 adds blur
+    const effectiveContrast = sharpness > 1
+      ? contrast * (1 + (sharpness - 1) * 0.4)
+      : contrast;
+    const sharpnessBlur = sharpness < 1 ? (1 - sharpness) * 3 : 0;
+    const effectiveBlur = blur + sharpnessBlur;
+
+    const matrix = buildColorMatrix(brightness, effectiveContrast, saturation, hue);
+    const noColorAdjust = isIdentityAdjustment(brightness, effectiveContrast, saturation, hue);
 
     if (!image) return <View style={{ width, height }} />;
 
-    // Fit image into canvas maintaining aspect ratio
+    // Fit image into canvas maintaining aspect ratio (letterbox/pillarbox)
     const imgAspect = image.width() / image.height();
     const canvasAspect = width / height;
     let drawW: number, drawH: number, drawX: number, drawY: number;
@@ -74,12 +82,6 @@ export const PhotoCanvas = forwardRef<PhotoCanvasRef, Props>(
       drawY = 0;
     }
 
-    const noAdjust = isIdentityAdjustment(
-      adjustments.brightness,
-      adjustments.contrast,
-      adjustments.saturation
-    );
-
     const rotateDeg = freeRotateDeg ?? 0;
     const rotateRad = (rotateDeg * Math.PI) / 180;
     const shouldRotate = Math.abs(rotateDeg) > 0.001;
@@ -88,7 +90,8 @@ export const PhotoCanvas = forwardRef<PhotoCanvasRef, Props>(
 
     const imageNode = (
       <Image image={image} x={drawX} y={drawY} width={drawW} height={drawH} fit="contain">
-        {!noAdjust && <ColorMatrix matrix={matrix} />}
+        {!noColorAdjust && <ColorMatrix matrix={matrix} />}
+        {effectiveBlur > 0 && <Blur blur={effectiveBlur} />}
       </Image>
     );
 
@@ -100,6 +103,18 @@ export const PhotoCanvas = forwardRef<PhotoCanvasRef, Props>(
           </Group>
         ) : (
           imageNode
+        )}
+
+        {/* Vignette overlay — radial gradient from transparent center to dark edges */}
+        {vignette > 0 && (
+          <Rect x={0} y={0} width={width} height={height}>
+            <RadialGradient
+              c={{ x: width / 2, y: height / 2 }}
+              r={Math.max(width, height) * 0.72}
+              colors={['rgba(0,0,0,0)', `rgba(0,0,0,${vignette})`]}
+              positions={[0.5, 1.0]}
+            />
+          </Rect>
         )}
       </Canvas>
     );

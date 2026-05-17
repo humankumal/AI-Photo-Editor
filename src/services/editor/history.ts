@@ -29,4 +29,8 @@ export const DEFAULT_ADJUSTMENTS: AdjustmentParams = {
   brightness: 1.0,
   contrast: 1.0,
   saturation: 1.0,
+  hue: 0,
+  sharpness: 1.0,
+  vignette: 0,
+  blur: 0,
 };

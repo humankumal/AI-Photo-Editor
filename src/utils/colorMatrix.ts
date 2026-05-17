@@ -61,26 +61,43 @@ function saturationMatrix(s: number): Matrix {
   ];
 }
 
+// W3C hue-rotate matrix (luma weights: Rw=0.213, Gw=0.715, Bw=0.072)
+function hueMatrix(degrees: number): Matrix {
+  const rad = (degrees * Math.PI) / 180;
+  const c = Math.cos(rad);
+  const s = Math.sin(rad);
+  return [
+    0.213 + c * 0.787 - s * 0.213,  0.715 - c * 0.715 - s * 0.715,  0.072 - c * 0.072 + s * 0.928,  0, 0,
+    0.213 - c * 0.213 + s * 0.143,  0.715 + c * 0.285 + s * 0.140,  0.072 - c * 0.072 - s * 0.283,  0, 0,
+    0.213 - c * 0.213 - s * 0.787,  0.715 - c * 0.715 + s * 0.715,  0.072 + c * 0.928 + s * 0.072,  0, 0,
+    0, 0, 0, 1, 0,
+  ];
+}
+
 /**
- * Returns a single 20-element ColorMatrix combining brightness, contrast, and saturation.
- * All params use a 0.0–2.0 scale where 1.0 = no change.
+ * Returns a single 20-element ColorMatrix combining brightness, contrast, saturation, and hue.
+ * brightness/contrast/saturation use 0.0–2.0 scale (1.0 = no change).
+ * hue is in degrees (-180 to 180, 0 = no change).
  */
 export function buildColorMatrix(
   brightness: number,
   contrast: number,
-  saturation: number
+  saturation: number,
+  hue: number = 0
 ): number[] {
   let m = identity;
   m = multiply(brightnessMatrix(brightness), m);
   m = multiply(contrastMatrix(contrast), m);
   m = multiply(saturationMatrix(saturation), m);
+  if (hue !== 0) m = multiply(hueMatrix(hue), m);
   return m;
 }
 
 export function isIdentityAdjustment(
   brightness: number,
   contrast: number,
-  saturation: number
+  saturation: number,
+  hue: number = 0
 ): boolean {
-  return brightness === 1.0 && contrast === 1.0 && saturation === 1.0;
+  return brightness === 1.0 && contrast === 1.0 && saturation === 1.0 && hue === 0;
 }

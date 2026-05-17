@@ -12,6 +12,7 @@ import { Colors } from '@/constants/colors';
 import { PhotoCanvas, type PhotoCanvasRef } from '@/components/editor/PhotoCanvas';
 import { CropOverlay } from '@/components/editor/CropOverlay';
 import { TransformToolbar } from '@/components/editor/TransformToolbar';
+import { AdvancedAdjustPanel } from '@/components/editor/AdvancedAdjustPanel';
 import type { EditorTool } from '@/types/editor';
 
 const TOOLS: { id: EditorTool; label: string }[] = [
@@ -39,6 +40,7 @@ export default function EditorScreen() {
   const { isCropping, isApplying, startCrop, cancelCrop, applyCrop } = useCrop();
   const [resolvedUri, setResolvedUri] = useState<string | null>(null);
   const [freeRotateDeg, setFreeRotateDeg] = useState(0);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Register canvas capture in global store for the export screen
   useEffect(() => {
@@ -166,29 +168,43 @@ export default function EditorScreen() {
       {!isCropping && (
         <View className="bg-surface pb-8" style={{ minHeight: 140 }}>
           {activeTool === 'adjust' && (
-            <View className="px-4 py-3 gap-3">
-              {(['brightness', 'contrast', 'saturation'] as const).map((key) => (
-                <View key={key} className="flex-row items-center gap-3">
-                  <Text className="text-textSecondary w-24 capitalize">{key}</Text>
-                  <View className="flex-1 flex-row gap-2">
-                    <TouchableOpacity
-                      className="bg-surfaceHigh px-3 py-2 rounded-lg"
-                      onPress={() => applyAdjustment({ [key]: Math.max(0.1, adjustments[key] - 0.1) })}
-                    >
-                      <Text className="text-textPrimary">−</Text>
-                    </TouchableOpacity>
-                    <Text className="text-textPrimary flex-1 text-center my-auto">
-                      {adjustments[key].toFixed(1)}
-                    </Text>
-                    <TouchableOpacity
-                      className="bg-surfaceHigh px-3 py-2 rounded-lg"
-                      onPress={() => applyAdjustment({ [key]: Math.min(2.0, adjustments[key] + 0.1) })}
-                    >
-                      <Text className="text-textPrimary">+</Text>
-                    </TouchableOpacity>
+            <View className="py-3 gap-3">
+              <View className="px-4 gap-3">
+                {(['brightness', 'contrast', 'saturation'] as const).map((key) => (
+                  <View key={key} className="flex-row items-center gap-3">
+                    <Text className="text-textSecondary w-24 capitalize">{key}</Text>
+                    <View className="flex-1 flex-row gap-2">
+                      <TouchableOpacity
+                        className="bg-surfaceHigh px-3 py-2 rounded-lg"
+                        onPress={() => applyAdjustment({ [key]: Math.max(0.1, adjustments[key] - 0.1) })}
+                      >
+                        <Text className="text-textPrimary">−</Text>
+                      </TouchableOpacity>
+                      <Text className="text-textPrimary flex-1 text-center my-auto">
+                        {adjustments[key].toFixed(1)}
+                      </Text>
+                      <TouchableOpacity
+                        className="bg-surfaceHigh px-3 py-2 rounded-lg"
+                        onPress={() => applyAdjustment({ [key]: Math.min(2.0, adjustments[key] + 0.1) })}
+                      >
+                        <Text className="text-textPrimary">+</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
-                </View>
-              ))}
+                ))}
+              </View>
+
+              {/* Advanced toggle */}
+              <TouchableOpacity
+                className="mx-4 bg-surfaceHigh rounded-xl py-2 items-center"
+                onPress={() => setShowAdvanced((v) => !v)}
+              >
+                <Text className="text-textSecondary text-sm font-semibold">
+                  {showAdvanced ? 'Advanced ▲' : 'Advanced ▾'}
+                </Text>
+              </TouchableOpacity>
+
+              {showAdvanced && <AdvancedAdjustPanel />}
             </View>
           )}
 

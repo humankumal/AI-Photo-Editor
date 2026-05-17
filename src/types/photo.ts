@@ -8,9 +8,13 @@ export type Photo = {
 };
 
 export type AdjustmentParams = {
-  brightness: number; // 0.0 – 2.0 (1.0 = no change)
+  brightness: number;  // 0.0 – 2.0 (1.0 = no change)
   contrast: number;
   saturation: number;
+  hue: number;         // degrees, -180 to 180 (0 = no change)
+  sharpness: number;   // 0.0 – 2.0 (1.0 = no change)
+  vignette: number;    // 0.0 – 1.0 (0 = none)
+  blur: number;        // 0.0 – 20.0 sigma (0 = none)
 };
 
 export type EditSession = {
